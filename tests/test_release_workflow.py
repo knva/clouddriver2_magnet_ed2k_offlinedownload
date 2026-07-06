@@ -26,6 +26,8 @@ def test_pyinstaller_spec_includes_qml_and_uses_windowed_exe() -> None:
 
     assert '["gui_app.py"]' in spec
     assert 'datas=[(str(root / "qml"), "qml")]' in spec
+    assert '"clouddrive_pb2"' in spec
+    assert '"clouddrive_pb2_grpc"' in spec
     assert "keep_qt_entry" in spec
     assert "drop_qt_prefixes" in spec
     assert "QtWebEngine" in spec

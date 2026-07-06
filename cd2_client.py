@@ -1,4 +1,5 @@
 import importlib
+import importlib.util
 import os
 from importlib import resources
 from pathlib import Path
@@ -12,10 +13,19 @@ PROTO_PATH = BASE_DIR / "clouddrive.proto"
 GENERATED_FLAG = BASE_DIR / ".generated_clouddrive_stub"
 
 
-def ensure_proto_generated() -> None:
+def generated_stubs_available() -> bool:
     pb2_file = BASE_DIR / "clouddrive_pb2.py"
     pb2_grpc_file = BASE_DIR / "clouddrive_pb2_grpc.py"
     if pb2_file.exists() and pb2_grpc_file.exists():
+        return True
+    return (
+        importlib.util.find_spec("clouddrive_pb2") is not None
+        and importlib.util.find_spec("clouddrive_pb2_grpc") is not None
+    )
+
+
+def ensure_proto_generated() -> None:
+    if generated_stubs_available():
         return
 
     if not PROTO_PATH.exists():
