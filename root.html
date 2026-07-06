@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>CloudDrive</title>
+    <link rel="icon" type="image/png" href="/public/favicon.png" />
+    <link rel="manifest" href="/public/manifest.json" />
+    <meta name="theme-color" content="#0ea5e9" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CloudDrive" />
+    <link rel="apple-touch-icon" href="/public/icon-maskable-192.png" />
+    <link rel="stylesheet" href="/app.css"/>
+    
+    <link rel="stylesheet" href="/public/lib/fontawesome/css/all.min.css" />
+    <script src="//open.thunderurl.com/thunder-link.js"></script>
+    <script src="/public/js/qrcode-generator.js"></script>
+    <script src="/public/js/qr-code-helpers.js"></script>
+    <script src="/public/js/remote-upload-helpers.js"></script>
+    <script>
+        (function() {
+            var theme = localStorage.getItem('theme') || 'auto';
+            if (theme === 'auto') {
+                theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <style>
+        /* Unsupported browser page — visible by default */
+        #no-wasm {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: -webkit-box;
+            display: -ms-flexbox;
+            display: flex;
+            -webkit-box-orient: vertical;
+            -webkit-box-direction: normal;
+            -ms-flex-direction: column;
+            flex-direction: column;
+            -webkit-box-align: center;
+            -ms-flex-align: center;
+            align-items: center;
+            -webkit-box-pack: center;
+            -ms-flex-pack: center;
+            justify-content: center;
+            background: #ffffff;
+            z-index: 100000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            padding: 24px;
+        }
+        [data-theme="dark"] #no-wasm { background: #000000; }
+        #no-wasm .no-wasm-icon { font-size: 48px; margin-bottom: 20px; }
+        #no-wasm .no-wasm-title { font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 12px; }
+        [data-theme="dark"] #no-wasm .no-wasm-title { color: #f8f9fa; }
+        #no-wasm .no-wasm-msg { font-size: 14px; color: #666; line-height: 1.6; max-width: 400px; }
+        [data-theme="dark"] #no-wasm .no-wasm-msg { color: #999; }
+
+        /* Splash screen — hidden by default, shown by JS when WASM is supported */
+        #splash {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            -webkit-box-orient: vertical;
+            -webkit-box-direction: normal;
+            flex-direction: column;
+            -webkit-box-align: center;
+            align-items: center;
+            -webkit-box-pack: center;
+            justify-content: center;
+            background: #ffffff;
+            z-index: 100001;
+            transition: opacity 0.4s ease;
+        }
+        [data-theme="dark"] #splash { background: #000000; }
+        #splash .splash-logo { width: 80px; height: 80px; border-radius: 18px; margin-bottom: 20px; }
+        #splash .splash-title {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-size: 20px; font-weight: 600; color: #1a1a1a; margin-bottom: 32px;
+        }
+        [data-theme="dark"] #splash .splash-title { color: #f8f9fa; }
+        #splash .splash-progress-track {
+            width: 200px; height: 4px; background: rgba(14, 165, 233, 0.15);
+            border-radius: 2px; overflow: hidden;
+        }
+        [data-theme="dark"] #splash .splash-progress-track { background: rgba(14, 165, 233, 0.25); }
+        #splash .splash-progress-bar {
+            height: 100%; width: 0%; background: #0ea5e9; border-radius: 2px;
+            transition: width 0.15s ease;
+        }
+        #splash .splash-status {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-size: 12px; color: #999; margin-top: 12px;
+        }
+        [data-theme="dark"] #splash .splash-status { color: #666; }
+        #splash.fade-out { opacity: 0; pointer-events: none; }
+    </style>
+<link rel="modulepreload" href="/clouddrive_web.js" crossorigin="anonymous"><link rel="modulepreload" href="/snippets/clouddrive_web-af390177e50ec7ab/inline0.js" crossorigin="anonymous"><link rel="preload" href="/clouddrive_web_bg.wasm" crossorigin="anonymous" as="fetch" type="application/wasm"></head>
+<body>
+    <!-- Unsupported browser / error message — visible by default, hidden by JS if WASM works -->
+    <div id="no-wasm" role="alert">
+        <div class="no-wasm-icon">&#x26A0;</div>
+        <div id="no-wasm-title" class="no-wasm-title">Browser Not Supported</div>
+        <div id="no-wasm-msg" class="no-wasm-msg">
+            CloudDrive requires WebAssembly support.<br>
+            Please use a modern browser such as Chrome, Firefox, Safari, or Edge.
+        </div>
+    </div>
+
+    <!-- Splash with progress — hidden by default, shown by JS if WASM works -->
+    <div id="splash" role="status" aria-label="Loading CloudDrive">
+        <img class="splash-logo" src="/public/favicon.png" alt="" />
+        <div class="splash-title">CloudDrive</div>
+        <div class="splash-progress-track" aria-hidden="true">
+            <div id="splash-bar" class="splash-progress-bar"></div>
+        </div>
+        <div id="splash-status" class="splash-status">Loading...</div>
+    </div>
+
+    <script>
+        // Show error page and hide splash.
+        // If title/msg provided, show a generic error instead of "Browser Not Supported".
+        window.__showUnsupported = function(title, msg) {
+            if (title) {
+                var t = document.getElementById('no-wasm-title');
+                if (t) t.textContent = title;
+            }
+            if (msg) {
+                var m = document.getElementById('no-wasm-msg');
+                if (m) m.innerHTML = msg;
+            }
+            document.getElementById('no-wasm').style.display = 'flex';
+            var s = document.getElementById('splash');
+            if (s) s.style.display = 'none';
+        };
+
+        // Dismiss splash (app loaded successfully)
+        window.__splashDone = function() {
+            var el = document.getElementById('splash');
+            if (el) {
+                el.classList.add('fade-out');
+                setTimeout(function() { el.remove(); }, 400);
+            }
+            // Also hide no-wasm if still in DOM
+            var nw = document.getElementById('no-wasm');
+            if (nw) nw.remove();
+        };
+
+        // Validate WASM by actually compiling a tiny module (catches partial support)
+        (function() {
+            try {
+                if (typeof WebAssembly !== 'object' ||
+                    typeof WebAssembly.compile !== 'function' ||
+                    typeof WebAssembly.instantiate !== 'function') {
+                    return; // no-wasm page stays visible
+                }
+                // Minimal valid WASM: magic + version + empty module
+                var bytes = new Uint8Array([0,97,115,109,1,0,0,0]);
+                WebAssembly.compile(bytes).then(function() {
+                    // Real WASM support confirmed — show splash, hide error
+                    document.getElementById('no-wasm').style.display = 'none';
+                    document.getElementById('splash').style.display = 'flex';
+                    setupProgressTracking();
+                }, function() {
+                    // compile failed — leave error page visible
+                });
+            } catch(e) {
+                // leave error page visible
+            }
+        })();
+
+        function setupProgressTracking() {
+            var origFetch = window.fetch;
+            var bar = document.getElementById('splash-bar');
+            var statusEl = document.getElementById('splash-status');
+
+            window.fetch = function(input, init) {
+                var url = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                if (url.indexOf('.wasm') === -1) return origFetch.call(this, input, init);
+
+                if (statusEl) statusEl.textContent = 'Loading...';
+
+                return origFetch.call(this, input, init).then(function(response) {
+                    var contentLength = response.headers.get('content-length');
+                    if (!contentLength || !response.body || typeof response.body.getReader !== 'function') {
+                        if (bar) bar.style.width = '90%';
+                        if (statusEl) statusEl.textContent = 'Initializing...';
+                        return response;
+                    }
+
+                    var total = parseInt(contentLength, 10);
+                    var loaded = 0;
+                    var reader = response.body.getReader();
+
+                    var stream = new ReadableStream({
+                        start: function(controller) {
+                            function pump() {
+                                return reader.read().then(function(result) {
+                                    if (result.done) {
+                                        controller.close();
+                                        if (bar) bar.style.width = '100%';
+                                        if (statusEl) statusEl.textContent = 'Initializing...';
+                                        return;
+                                    }
+                                    loaded += result.value.byteLength;
+                                    var pct = Math.min(Math.round((loaded / total) * 100), 100);
+                                    if (bar) bar.style.width = pct + '%';
+                                    if (statusEl) statusEl.textContent = Math.round(loaded / 1024) + ' / ' + Math.round(total / 1024) + ' KB';
+                                    controller.enqueue(result.value);
+                                    return pump();
+                                });
+                            }
+                            return pump();
+                        }
+                    });
+
+                    return new Response(stream, {
+                        headers: response.headers,
+                        status: response.status,
+                        statusText: response.statusText
+                    });
+                });
+            };
+        }
+    </script>
+
+    
+<script type="module">
+import init, * as bindings from '/clouddrive_web.js';
+const wasm = await init({ module_or_path: '/clouddrive_web_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+
+    <script>
+        // Track whether the app has loaded successfully
+        window.__appLoaded = false;
+
+        // Dismiss splash when Trunk finishes WASM init (fires after main() returns)
+        window.addEventListener('TrunkApplicationStarted', function() {
+            window.__appLoaded = true;
+            window.__splashDone();
+        });
+        // If WASM init fails, show appropriate error (only before app loads)
+        window.addEventListener('unhandledrejection', function(e) {
+            if (window.__appLoaded) return;
+            var msg = (e.reason && e.reason.message) ? e.reason.message : String(e.reason || '');
+            var isWasm = msg.toLowerCase().indexOf('wasm') !== -1;
+            if (isWasm) {
+                window.__showUnsupported(); // default "Browser Not Supported" message
+            } else if (msg) {
+                window.__showUnsupported('Failed to Load', msg + '<br><br>Please try refreshing the page.');
+            }
+        });
+        window.addEventListener('error', function(e) {
+            if (window.__appLoaded) return;
+            var msg = (e.message) ? e.message : '';
+            if (msg) {
+                window.__showUnsupported('Failed to Load', msg + '<br><br>Please try refreshing the page.');
+            }
+        });
+        // Fallback: if app hasn't loaded after 30s, show timeout error (not browser unsupported)
+        setTimeout(function() {
+            if (!window.__appLoaded && document.getElementById('splash')) {
+                window.__showUnsupported(
+                    'Loading Timeout',
+                    'CloudDrive is taking too long to load.<br>Please check your network connection and try refreshing the page.'
+                );
+            }
+        }, 30000);
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/public/service-worker.js', {
+                updateViaCache: 'none'
+            }).then(function(reg) {
+                reg.update();
+            });
+        }
+    </script>
+</body>
+</html>
+
