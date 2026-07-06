@@ -131,6 +131,8 @@ uv run python gui_app.py
 - 推送 `v*` tag 时：构建 `CD2ClipboardHelper.exe`，创建 GitHub Release，并上传 exe、zip 和 SHA256 校验文件
 - 手动运行 workflow 时：默认只上传 workflow artifact；填写 `release_tag` 时会同时发布 Release
 
+发布包会使用 UPX，并在 PyInstaller spec 中裁剪未使用的 Qt/QML 模块，避免把 WebEngine、3D、Multimedia 等大体积模块打入 exe。
+
 发布新版本：
 
 ```powershell

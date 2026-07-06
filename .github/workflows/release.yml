@@ -77,8 +77,17 @@ jobs:
       - name: Install build dependencies
         run: uv sync --locked --group build
 
+      - name: Install UPX
+        shell: powershell
+        run: |
+          choco install upx -y --no-progress
+          $upx = (Get-Command upx).Source
+          "UPX_DIR=$(Split-Path $upx)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          upx --version
+
       - name: Build executable
-        run: uv run pyinstaller --clean --noconfirm CD2ClipboardHelper.spec
+        shell: powershell
+        run: uv run pyinstaller --clean --noconfirm --upx-dir "$env:UPX_DIR" CD2ClipboardHelper.spec
 
       - name: Create release assets
         shell: powershell
@@ -87,10 +96,17 @@ jobs:
           if (-not (Test-Path $exe)) {
             throw "Executable not found: $exe"
           }
-          Compress-Archive -Path $exe -DestinationPath "dist\CD2ClipboardHelper-windows-x64.zip" -Force
+          $zip = "dist\CD2ClipboardHelper-windows-x64.zip"
+          $sevenZip = Join-Path $env:ProgramFiles "7-Zip\7z.exe"
+          if (Test-Path $sevenZip) {
+            & $sevenZip a -tzip -mx=9 $zip $exe
+          } else {
+            Compress-Archive -Path $exe -DestinationPath $zip -Force
+          }
           Get-FileHash $exe -Algorithm SHA256 | ForEach-Object {
             "$($_.Hash)  CD2ClipboardHelper.exe"
           } | Set-Content -Encoding ASCII "dist\SHA256SUMS.txt"
+          Get-ChildItem dist | Select-Object Name,Length | Format-Table -AutoSize
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4

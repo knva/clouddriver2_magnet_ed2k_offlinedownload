@@ -434,6 +434,8 @@ _TASK_IDS = count(1)
 
 
 def main() -> int:
+    os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "Basic")
+
     app = QApplication(sys.argv)
     app.setOrganizationName("cd2api")
     app.setApplicationName("clipboard-helper")
