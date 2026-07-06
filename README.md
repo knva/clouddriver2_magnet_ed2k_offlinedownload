@@ -122,3 +122,27 @@ uv run python gui_app.py
 默认基础目录是 `/115open/javbus`，实际推送目录会自动追加当天日期，例如 `/115open/javbus/20260706`。首次默认值也可以用 `CD2_GUI_BASE_DIR` 覆盖，之后会保存在本机 QSettings 中。
 
 悬浮窗里也可以填写 CloudDrive2 API Key。界面中填写的 Key 会优先用于 GUI 推送；留空时继续使用 `CLOUDDRIVE_API_TOKEN` 等环境变量。
+
+## 发布 Windows EXE
+
+仓库包含 GitHub Actions workflow：`.github/workflows/release.yml`。
+
+- 推送到 `main` 或创建 PR 时：运行测试、编译检查和 QML smoke test
+- 推送 `v*` tag 时：构建 `CD2ClipboardHelper.exe`，创建 GitHub Release，并上传 exe、zip 和 SHA256 校验文件
+- 手动运行 workflow 时：默认只上传 workflow artifact；填写 `release_tag` 时会同时发布 Release
+
+发布新版本：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+本地打包验证：
+
+```powershell
+uv sync --group build
+uv run pyinstaller --clean --noconfirm CD2ClipboardHelper.spec
+```
+
+打包结果在 `dist/CD2ClipboardHelper.exe`。EXE 使用同一套 CloudDrive2 配置：可以在界面里填写 API Key，也可以继续使用 `CLOUDDRIVE_API_TOKEN`、`CLOUDDRIVE_GRPC_ADDRESS` 等环境变量。
