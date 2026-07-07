@@ -101,6 +101,103 @@ def test_push_worker_passes_configured_api_key_to_client_factory() -> None:
     assert seen_tokens == ["token-from-gui"]
 
 
+def test_push_all_uses_single_batch_call_and_updates_selected_tasks(tmp_path) -> None:
+    get_app()
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+    settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "cd2api-tests", "push-all-batch")
+    controller = ClipboardController(settings=settings)
+    controller.add_links_from_text(
+        "\n".join(
+            [
+                "magnet:?xt=urn:btih:aaaa",
+                "magnet:?xt=urn:btih:bbbb",
+                "magnet:?xt=urn:btih:cccc",
+            ]
+        )
+    )
+    third_task = controller.links.task_at(2)
+    assert third_task is not None
+    controller.links.set_task_state(third_task.id, "done", "existing")
+
+    calls = []
+
+    class FakeBatchClient:
+        def add_offline_files(self, urls, to_folder: str, check_folder_after_secs: int) -> dict:
+            calls.append((list(urls), to_folder, check_folder_after_secs))
+            return {"success": True, "errorMessage": "", "resultFilePaths": [to_folder]}
+
+        def close(self) -> None:
+            calls.append(("closed",))
+
+    class ImmediateThreadPool:
+        def start(self, worker) -> None:
+            worker.run()
+
+    controller._thread_pool = ImmediateThreadPool()
+    controller._client_factory = lambda api_token=None: FakeBatchClient()
+
+    controller.pushAll()
+
+    first = controller.links.task_at(0)
+    second = controller.links.task_at(1)
+    third = controller.links.task_at(2)
+    assert first is not None
+    assert second is not None
+    assert third is not None
+    assert first.status == "done"
+    assert second.status == "done"
+    assert third.status == "done"
+    assert calls == [
+        (
+            ["magnet:?xt=urn:btih:aaaa", "magnet:?xt=urn:btih:bbbb"],
+            controller.targetDirectory,
+            30,
+        ),
+        ("closed",),
+    ]
+
+
+def test_push_all_marks_selected_tasks_error_when_batch_call_fails(tmp_path) -> None:
+    get_app()
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
+    settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "cd2api-tests", "push-all-batch-error")
+    controller = ClipboardController(settings=settings)
+    controller.add_links_from_text(
+        "\n".join(
+            [
+                "magnet:?xt=urn:btih:dddd",
+                "magnet:?xt=urn:btih:eeee",
+            ]
+        )
+    )
+
+    class FakeBatchClient:
+        def add_offline_files(self, urls, to_folder: str, check_folder_after_secs: int) -> dict:
+            return {"success": False, "errorMessage": "batch failed", "resultFilePaths": []}
+
+        def close(self) -> None:
+            pass
+
+    class ImmediateThreadPool:
+        def start(self, worker) -> None:
+            worker.run()
+
+    controller._thread_pool = ImmediateThreadPool()
+    controller._client_factory = lambda api_token=None: FakeBatchClient()
+
+    controller.pushAll()
+
+    first = controller.links.task_at(0)
+    second = controller.links.task_at(1)
+    assert first is not None
+    assert second is not None
+    assert first.status == "error"
+    assert second.status == "error"
+    assert first.message == "batch failed"
+    assert second.message == "batch failed"
+    assert controller.statusText == "batch failed"
+
+
 def test_main_qml_loads_with_controller(tmp_path) -> None:
     app = get_app()
     settings = QSettings(QSettings.Format.IniFormat, QSettings.Scope.UserScope, "cd2api-tests", "qml-smoke")
