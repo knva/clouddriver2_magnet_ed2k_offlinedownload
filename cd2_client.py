@@ -27,6 +27,13 @@ def _join_cloud_path(parent_path: str, folder_name: str) -> str:
     return f"{parent_path.rstrip('/')}/{folder_name}"
 
 
+def _normalize_offline_urls(urls: Sequence[str]) -> str:
+    normalized = [url.strip() for url in urls if url and url.strip()]
+    if not normalized:
+        raise ValueError("At least one offline URL is required")
+    return "\n".join(normalized)
+
+
 def generated_stubs_available() -> bool:
     pb2_file = BASE_DIR / "clouddrive_pb2.py"
     pb2_grpc_file = BASE_DIR / "clouddrive_pb2_grpc.py"
@@ -126,11 +133,25 @@ class CloudDriveClient:
         check_folder_after_secs: int = 30,
         ensure_to_folder: bool = True,
     ) -> dict:
+        return self.add_offline_files(
+            urls=[url],
+            to_folder=to_folder,
+            check_folder_after_secs=check_folder_after_secs,
+            ensure_to_folder=ensure_to_folder,
+        )
+
+    def add_offline_files(
+        self,
+        urls: Sequence[str],
+        to_folder: str,
+        check_folder_after_secs: int = 30,
+        ensure_to_folder: bool = True,
+    ) -> dict:
         target_folder = self.ensure_folder_exists(to_folder) if ensure_to_folder else to_folder
         self.authenticate()
         response = self.stub.AddOfflineFiles(
             clouddrive_pb2.AddOfflineFileRequest(
-                urls=url,
+                urls=_normalize_offline_urls(urls),
                 toFolder=target_folder,
                 checkFolderAfterSecs=check_folder_after_secs,
             ),

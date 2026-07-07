@@ -187,6 +187,10 @@ class PushSignals(QObject):
     finished = Signal(int, bool, str)
 
 
+class BatchPushSignals(QObject):
+    finished = Signal(list, bool, str)
+
+
 class PushWorker(QRunnable):
     def __init__(
         self,
@@ -227,6 +231,50 @@ class PushWorker(QRunnable):
             client.close()
 
 
+class BatchPushWorker(QRunnable):
+    def __init__(
+        self,
+        task_ids: list[int],
+        urls: list[str],
+        target_directory: str,
+        check_folder_after_secs: int,
+        api_token: str | None = None,
+        client_factory: Callable = build_client,
+    ) -> None:
+        super().__init__()
+        self.task_ids = task_ids
+        self.urls = urls
+        self.target_directory = target_directory
+        self.check_folder_after_secs = check_folder_after_secs
+        self.api_token = api_token
+        self.client_factory = client_factory
+        self.signals = BatchPushSignals()
+
+    @Slot()
+    def run(self) -> None:
+        client = self.client_factory(api_token=self.api_token or None)
+        try:
+            result = client.add_offline_files(
+                urls=self.urls,
+                to_folder=self.target_directory,
+                check_folder_after_secs=self.check_folder_after_secs,
+            )
+            if result.get("success"):
+                paths = result.get("resultFilePaths") or [self.target_directory]
+                self.signals.finished.emit(
+                    self.task_ids,
+                    True,
+                    f"已批量推送 {len(self.urls)} 个链接到 " + ", ".join(paths),
+                )
+            else:
+                message = result.get("errorMessage") or "CloudDrive2 返回失败"
+                self.signals.finished.emit(self.task_ids, False, message)
+        except Exception as exc:
+            self.signals.finished.emit(self.task_ids, False, str(exc))
+        finally:
+            client.close()
+
+
 class ClipboardController(QObject):
     linksChanged = Signal()
     baseDirectoryChanged = Signal()
@@ -248,6 +296,7 @@ class ClipboardController(QObject):
         self._clipboard_connected = False
         self._last_clipboard_text = ""
         self._thread_pool = QThreadPool.globalInstance()
+        self._client_factory = build_client
 
     @Property(QObject, constant=True)
     def links(self) -> LinkListModel:
@@ -400,8 +449,24 @@ class ClipboardController(QObject):
         if not rows:
             self._set_status_text("没有待推送的链接")
             return
-        for row in rows:
-            self.push(row)
+        tasks = [self._links.task_at(row) for row in rows]
+        selected_tasks = [task for task in tasks if task is not None]
+        if not selected_tasks:
+            self._set_status_text("没有待推送的链接")
+            return
+        for task in selected_tasks:
+            self._links.set_task_state(task.id, "sending", "正在批量推送")
+        self._set_status_text(f"正在批量推送 {len(selected_tasks)} 个链接")
+        worker = BatchPushWorker(
+            task_ids=[task.id for task in selected_tasks],
+            urls=[task.url for task in selected_tasks],
+            target_directory=self.targetDirectory,
+            check_folder_after_secs=self._check_folder_after_secs,
+            api_token=self._api_key or None,
+            client_factory=self._client_factory,
+        )
+        worker.signals.finished.connect(self._handle_batch_push_finished)
+        self._thread_pool.start(worker)
 
     @Slot(int)
     def remove(self, row: int) -> None:
@@ -427,6 +492,13 @@ class ClipboardController(QObject):
     def _handle_push_finished(self, task_id: int, success: bool, message: str) -> None:
         status = "done" if success else "error"
         self._links.set_task_state(task_id, status, message)
+        self._set_status_text(message)
+
+    @Slot(list, bool, str)
+    def _handle_batch_push_finished(self, task_ids: list[int], success: bool, message: str) -> None:
+        status = "done" if success else "error"
+        for task_id in task_ids:
+            self._links.set_task_state(task_id, status, message)
         self._set_status_text(message)
 
 
